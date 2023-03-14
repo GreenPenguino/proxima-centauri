@@ -2,8 +2,8 @@ use axum::{
     routing::{get, post},
     Router,
 };
-use proxima_centauri::{process_command, root};
-use std::net::SocketAddr;
+use proxima_centauri::{process_command, root, GlobalState};
+use std::{net::SocketAddr, sync::Arc};
 use tracing::Level;
 
 #[tokio::main]
@@ -15,12 +15,14 @@ async fn main() {
 
     tracing::subscriber::set_global_default(subscriber).unwrap();
 
+    let shared_state = Arc::new(GlobalState::new());
     // build our application with a route
     let app = Router::new()
         // `GET /` goes to `root`
         .route("/", get(root))
         // `POST /command` goes to `process_command`
-        .route("/command", post(process_command));
+        .route("/command", post(process_command))
+        .with_state(shared_state);
 
     // run our app with hyper
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
