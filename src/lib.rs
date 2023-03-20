@@ -2,7 +2,7 @@ use axum::extract::State;
 use axum::{http::StatusCode, Json};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::net::{Ipv4Addr, SocketAddrV4};
+use std::net::{IpAddr, SocketAddr};
 use std::sync::{Arc, Mutex};
 use tokio::io::{self, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
@@ -20,12 +20,12 @@ enum Command {
     New {
         incoming_port: u16,
         destination_port: u16,
-        destination_ip: Ipv4Addr,
+        destination_ip: IpAddr,
         id: Uuid,
     },
     Modify {
         destination_port: u16,
-        destination_ip: Ipv4Addr,
+        destination_ip: IpAddr,
         id: Uuid,
     },
     Delete {
@@ -53,7 +53,7 @@ impl GlobalState {
 
 #[derive(Debug)]
 struct ProxyState {
-    destination: SocketAddrV4,
+    destination: SocketAddr,
     control: Sender<ProxyControlMessage>,
 }
 
@@ -74,7 +74,7 @@ pub async fn process_command(
             destination_ip,
             id,
         } => {
-            let addr = SocketAddrV4::new(destination_ip, destination_port);
+            let addr = SocketAddr::new(destination_ip, destination_port);
             let (tx, rx) = watch::channel(ProxyControlMessage::Open { destination: addr });
             state.proxies.lock().unwrap().insert(
                 id,
@@ -117,7 +117,7 @@ pub async fn process_command(
 
 #[derive(Debug)]
 enum ProxyControlMessage {
-    Open { destination: SocketAddrV4 }, // Reroute { new: SocketAddr },
+    Open { destination: SocketAddr },
     Close,
 }
 
@@ -221,7 +221,7 @@ async fn transfer(
 
 #[cfg(test)]
 mod tests {
-    use std::net::Ipv4Addr;
+    use std::net::{IpAddr, Ipv4Addr};
 
     use crate::{Command, ProxyCommand};
     use uuid::uuid;
@@ -232,7 +232,7 @@ mod tests {
             command: Command::New {
                 incoming_port: 5555,
                 destination_port: 6666,
-                destination_ip: Ipv4Addr::new(127, 0, 0, 1),
+                destination_ip: IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
                 id: uuid!("67e55044-10b1-426f-9247-bb680e5fe0c8"),
             },
             signature: [0u8; 32],
