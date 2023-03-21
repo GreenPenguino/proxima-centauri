@@ -15,7 +15,9 @@ async fn main() {
 
     tracing::subscriber::set_global_default(subscriber).unwrap();
 
-    let shared_state = Arc::new(GlobalState::new());
+    let verifying_key = std::env::args().nth(1).expect("No verifying key provided");
+
+    let shared_state = Arc::new(GlobalState::new(&verifying_key));
     // build our application with a route
     let app = Router::new()
         // `GET /` goes to `root`
