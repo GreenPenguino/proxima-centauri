@@ -1,6 +1,6 @@
 curl --header "Content-Type: application/json" \
   --data '{"command": {
-                       "New": {
+                       "Create": {
                                 "incoming_port": 5555,
                                 "destination_port": 8080,
                                 "destination_ip": "127.0.0.1",

@@ -29,7 +29,7 @@ impl ProxyCommand {
 
 #[derive(Deserialize, Serialize, Debug)]
 enum Command {
-    New {
+    Create {
         incoming_port: u16,
         destination_port: u16,
         destination_ip: IpAddr,
@@ -90,7 +90,7 @@ pub async fn process_command(
         );
     }
     match payload.command {
-        Command::New {
+        Command::Create {
             incoming_port,
             destination_port,
             destination_ip,
@@ -253,11 +253,11 @@ mod tests {
     use uuid::uuid;
 
     #[test]
-    fn serialize_proxy_command_new() {
+    fn serialize_proxy_command_create() {
         let key = SigningKey::from_slice(&[1; 48]).unwrap();
         let signature = key.sign(&[]); // Not a valid signature
         let proxy_command = ProxyCommand {
-            command: Command::New {
+            command: Command::Create {
                 incoming_port: 5555,
                 destination_port: 6666,
                 destination_ip: IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
@@ -265,7 +265,7 @@ mod tests {
             },
             signature,
         };
-        let expected = "{\"command\":{\"New\":{\"incoming_port\":5555,\"destination_port\":6666,\"\
+        let expected = "{\"command\":{\"Create\":{\"incoming_port\":5555,\"destination_port\":6666,\"\
                         destination_ip\":\"127.0.0.1\",\"id\":\"67e55044-10b1-426f-9247-bb680e5fe0c8\"}},\
                         \"signature\":\"\
                             5C912C4B3BFF2ADB49885DCBDB53D6D3041D0632E498CDFF\
@@ -299,7 +299,7 @@ mod tests {
 
     #[test]
     fn verify_signature() {
-        let command = Command::New {
+        let command = Command::Create {
             incoming_port: 4567,
             destination_port: 7654,
             destination_ip: IpAddr::V4(Ipv4Addr::new(123, 23, 76, 21)),
