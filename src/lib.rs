@@ -14,20 +14,26 @@ use uuid::Uuid;
 
 #[derive(Deserialize, Serialize, Debug)]
 pub struct ProxyCommand {
+    #[serde(flatten)]
     command: Command,
-    signature: Signature,
+    signature: Option<Signature>,
 }
 
 impl ProxyCommand {
-    fn verify_signature(&self, verifying_key: &VerifyingKey) -> bool {
-        let message = serde_json::to_string(&self.command).unwrap();
-        verifying_key
-            .verify(message.as_bytes(), &self.signature)
-            .is_ok()
+    fn verify_signature(&self, verifying_key: &Option<VerifyingKey>) -> bool {
+        match (verifying_key, &self.signature) {
+            (Some(key), Some(signature)) => {
+                let message = serde_json::to_string(&self.command).unwrap();
+                key.verify(message.as_bytes(), signature).is_ok()
+            }
+            (Some(_), None) => false,
+            (None, _) => true,
+        }
     }
 }
 
 #[derive(Deserialize, Serialize, Debug)]
+#[serde(rename_all = "snake_case")]
 enum Command {
     Create {
         incoming_port: u16,
@@ -53,14 +59,16 @@ pub struct ProxyResponse {
 #[derive(Debug)]
 pub struct GlobalState {
     proxies: Mutex<HashMap<Uuid, ProxyState>>,
-    verifying_key: VerifyingKey,
+    verifying_key: Option<VerifyingKey>,
 }
 
 impl GlobalState {
-    pub fn new(verifying_key: &str) -> Self {
+    pub fn new<S: AsRef<str>>(verifying_key: Option<S>) -> Self {
         Self {
             proxies: Mutex::new(HashMap::new()),
-            verifying_key: VerifyingKey::from_str(verifying_key).unwrap(),
+            verifying_key: verifying_key
+                .map(|key| VerifyingKey::from_str(key.as_ref()).ok())
+                .flatten(),
         }
     }
 }
@@ -263,10 +271,10 @@ mod tests {
                 destination_ip: IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
                 id: uuid!("67e55044-10b1-426f-9247-bb680e5fe0c8"),
             },
-            signature,
+            signature: Some(signature),
         };
-        let expected = "{\"command\":{\"Create\":{\"incoming_port\":5555,\"destination_port\":6666,\"\
-                        destination_ip\":\"127.0.0.1\",\"id\":\"67e55044-10b1-426f-9247-bb680e5fe0c8\"}},\
+        let expected = "{\"create\":{\"incoming_port\":5555,\"destination_port\":6666,\"\
+                        destination_ip\":\"127.0.0.1\",\"id\":\"67e55044-10b1-426f-9247-bb680e5fe0c8\"},\
                         \"signature\":\"\
                             5C912C4B3BFF2ADB49885DCBDB53D6D3041D0632E498CDFF\
                             2114CD2DCAC936AB0901B47C411E5BB57FE77BEF96044940\
@@ -284,10 +292,9 @@ mod tests {
             command: Command::Delete {
                 id: uuid!("67e55044-10b1-426f-9247-bb680e5fe0c8"),
             },
-            signature,
+            signature: Some(signature),
         };
-        let expected =
-            "{\"command\":{\"Delete\":{\"id\":\"67e55044-10b1-426f-9247-bb680e5fe0c8\"}},\
+        let expected = "{\"delete\":{\"id\":\"67e55044-10b1-426f-9247-bb680e5fe0c8\"},\
                         \"signature\":\"\
                             5C912C4B3BFF2ADB49885DCBDB53D6D3041D0632E498CDFF\
                             2114CD2DCAC936AB0901B47C411E5BB57FE77BEF96044940\
@@ -314,11 +321,11 @@ mod tests {
         assert_eq!(bytes.len(), 96);
         let proxy_command = ProxyCommand {
             command,
-            signature: bytes.as_slice().try_into().unwrap(),
+            signature: Some(signature),
         };
 
         // Verify signed message
         let verifying_key = VerifyingKey::from(&signing_key);
-        assert!(proxy_command.verify_signature(&verifying_key));
+        assert!(proxy_command.verify_signature(&Some(verifying_key)));
     }
 }
