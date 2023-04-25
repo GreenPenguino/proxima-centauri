@@ -140,7 +140,7 @@ pub async fn process_command(
     (
         StatusCode::ACCEPTED,
         Json(ProxyResponse {
-            message: "Success".to_string(),
+            message: "success".to_string(),
         }),
     )
 }
