@@ -49,11 +49,15 @@ enum Command {
     Delete {
         id: Uuid,
     },
+    Status,
 }
 
 #[derive(Serialize)]
-pub struct ProxyResponse {
-    message: String,
+pub enum ProxyResponse {
+    Message(String),
+    Status {
+        tunnels: HashMap<Uuid, (u16, SocketAddr)>,
+    },
 }
 
 #[derive(Debug)]
@@ -95,9 +99,7 @@ pub async fn process_command(
     if !payload.verify_signature(&state.verifying_key) {
         return (
             StatusCode::UNAUTHORIZED,
-            Json(ProxyResponse {
-                message: "Invalid signature".to_string(),
-            }),
+            Json(ProxyResponse::Message("Invalid signature".to_string())),
         );
     }
     match payload.command {
@@ -111,17 +113,17 @@ pub async fn process_command(
             if state.proxies.lock().unwrap().get(&id).is_some() {
                 return (
                     StatusCode::CONFLICT,
-                    Json(ProxyResponse {
-                        message: "Id already exists. Use the modify command instead.".to_string(),
-                    }),
+                    Json(ProxyResponse::Message(
+                        "Id already exists. Use the modify command instead.".to_string(),
+                    )),
                 );
             }
             if !state.ports.write().unwrap().insert(incoming_port) {
                 return (
                     StatusCode::CONFLICT,
-                    Json(ProxyResponse {
-                        message: format!("The `incoming_port` already in use: {incoming_port}"),
-                    }),
+                    Json(ProxyResponse::Message(format!(
+                        "The `incoming_port` already in use: {incoming_port}"
+                    ))),
                 );
             }
 
@@ -138,11 +140,11 @@ pub async fn process_command(
             add_proxy(incoming_port, rx).await.unwrap(); // TODO: error propagation??
             (
                 StatusCode::ACCEPTED,
-                Json(ProxyResponse {
-                    message: format!(
+                Json(ProxyResponse ::
+                    Message( format!(
                         "Created tunnel {id} on port {incoming_port} to use {destination_ip}:{destination_port}"
                     ),
-                }),
+                )),
             )
         }
         Command::Modify {
@@ -161,18 +163,14 @@ pub async fn process_command(
                     .unwrap();
                 (
                     StatusCode::ACCEPTED,
-                    Json(ProxyResponse {
-                        message: format!(
-                            "Changed tunnel {id} to use {destination_ip}:{destination_port}"
-                        ),
-                    }),
+                    Json(ProxyResponse::Message(format!(
+                        "Changed tunnel {id} to use {destination_ip}:{destination_port}"
+                    ))),
                 )
             } else {
                 (
                     StatusCode::NOT_FOUND,
-                    Json(ProxyResponse {
-                        message: format!("Id not found: {id}"),
-                    }),
+                    Json(ProxyResponse::Message(format!("Id not found: {id}"))),
                 )
             }
         }
@@ -182,19 +180,27 @@ pub async fn process_command(
                 state.ports.write().unwrap().remove(&proxy.incoming_port);
                 (
                     StatusCode::ACCEPTED,
-                    Json(ProxyResponse {
-                        message: format!("Deleted tunnel: {id}"),
-                    }),
+                    Json(ProxyResponse::Message(format!("Deleted tunnel: {id}"))),
                 )
             } else {
                 (
                     StatusCode::NOT_FOUND,
-                    Json(ProxyResponse {
-                        message: format!("Id not found: {id}"),
-                    }),
+                    Json(ProxyResponse::Message(format!("Id not found: {id}"))),
                 )
             }
         }
+        Command::Status => (
+            StatusCode::OK,
+            Json(ProxyResponse::Status {
+                tunnels: state
+                    .proxies
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .map(|(key, value)| (*key, (value.incoming_port, value.destination)))
+                    .collect(),
+            }),
+        ),
     }
 }
 
