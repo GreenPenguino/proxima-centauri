@@ -211,7 +211,7 @@ enum ProxyControlMessage {
 }
 
 async fn add_proxy(in_port: u16, control: Receiver<ProxyControlMessage>) -> anyhow::Result<()> {
-    let listener = TcpListener::bind(("127.0.0.1", in_port)).await?;
+    let listener = TcpListener::bind(("0.0.0.0", in_port)).await?;
 
     tracing::info!("proxying port {in_port} to {:?}", *control.borrow());
 
