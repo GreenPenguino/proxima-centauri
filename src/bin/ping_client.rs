@@ -70,7 +70,7 @@ async fn main() {
             if !args.csv {
                 println!("Sending ping {i}");
             }
-            sleep(Duration::from_millis(1)).await;
+            sleep(Duration::from_millis(args.time)).await;
         }
         if !args.csv {
             println!("Done sending pings");
@@ -89,6 +89,10 @@ struct Args {
     /// Amount of pings to send
     #[arg(short, long)]
     count: u32,
+
+    /// Time between pings
+    #[arg(short, long)]
+    time: u64,
 
     /// CSV mode
     #[arg(long)]
