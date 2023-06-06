@@ -43,17 +43,14 @@ impl ProxyCommand {
                 let now = time::SystemTime::now()
                     .duration_since(time::UNIX_EPOCH)
                     .unwrap();
-                if now > timestamp {
-                    // timestamp is older
-                    if now - timestamp <= time::Duration::from_secs(60) {
-                        // less than a minute old
-                        true
-                    } else {
-                        tracing::warn!("command is more than a minute old");
-                        false
-                    }
+                if timestamp > (now + time::Duration::from_secs(30)) {
+                    tracing::warn!("command is more than 30s from the future");
+                    false
+                } else if now - timestamp <= time::Duration::from_secs(60) {
+                    // less than a minute old
+                    true
                 } else {
-                    tracing::warn!("command is from the future");
+                    tracing::warn!("command is more than a minute old");
                     false
                 }
             }
