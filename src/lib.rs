@@ -7,6 +7,7 @@ use std::collections::{HashMap, HashSet};
 use std::net::{IpAddr, SocketAddr};
 use std::str::FromStr;
 use std::sync::{Arc, Mutex, RwLock};
+use std::time;
 use tokio::io::{self, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::watch::{self, Receiver, Sender};
@@ -16,6 +17,7 @@ use uuid::Uuid;
 pub struct ProxyCommand {
     #[serde(flatten)]
     command: Command,
+    timestamp: Option<u64>,
     signature: Option<Signature>,
 }
 
@@ -23,8 +25,34 @@ impl ProxyCommand {
     fn verify_signature(&self, verifying_key: &Option<VerifyingKey>) -> bool {
         match (verifying_key, &self.signature) {
             (Some(key), Some(signature)) => {
-                let message = serde_json::to_string(&self.command).unwrap();
-                key.verify(message.as_bytes(), signature).is_ok()
+                let mut message = serde_json::to_string(&self.command).unwrap();
+
+                let timestamp = if let Some(timestamp) = self.timestamp {
+                    message.push_str(&timestamp.to_string());
+                    time::Duration::from_secs(timestamp)
+                } else {
+                    tracing::debug!("timestamp missing while signature is present");
+                    return false; // timestamp missing with signature present
+                };
+
+                if !key.verify(message.as_bytes(), signature).is_ok() {
+                    tracing::debug!("signature does not match message");
+                    return false; // signature doesn't match
+                }
+
+                let now = time::SystemTime::now()
+                    .duration_since(time::UNIX_EPOCH)
+                    .unwrap();
+                if timestamp > (now + time::Duration::from_secs(30)) {
+                    tracing::warn!("command is more than 30s from the future");
+                    false
+                } else if now - timestamp <= time::Duration::from_secs(60) {
+                    // less than a minute old
+                    true
+                } else {
+                    tracing::warn!("command is more than a minute old");
+                    false
+                }
             }
             (Some(_), None) => false,
             (None, _) => true,
@@ -310,7 +338,10 @@ async fn transfer(
 
 #[cfg(test)]
 mod tests {
-    use std::net::{IpAddr, Ipv4Addr};
+    use std::{
+        net::{IpAddr, Ipv4Addr},
+        time,
+    };
 
     use crate::{Command, ProxyCommand};
     use p384::{
@@ -330,10 +361,12 @@ mod tests {
                 destination_ip: IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
                 id: uuid!("67e55044-10b1-426f-9247-bb680e5fe0c8"),
             },
+            timestamp: Some(8888),
             signature: Some(signature),
         };
         let expected = "{\"create\":{\"incoming_port\":5555,\"destination_port\":6666,\"\
                         destination_ip\":\"127.0.0.1\",\"id\":\"67e55044-10b1-426f-9247-bb680e5fe0c8\"},\
+                        \"timestamp\":8888,\
                         \"signature\":\"\
                             5C912C4B3BFF2ADB49885DCBDB53D6D3041D0632E498CDFF\
                             2114CD2DCAC936AB0901B47C411E5BB57FE77BEF96044940\
@@ -351,9 +384,11 @@ mod tests {
             command: Command::Delete {
                 id: uuid!("67e55044-10b1-426f-9247-bb680e5fe0c8"),
             },
+            timestamp: Some(987654),
             signature: Some(signature),
         };
         let expected = "{\"delete\":{\"id\":\"67e55044-10b1-426f-9247-bb680e5fe0c8\"},\
+                        \"timestamp\":987654,\
                         \"signature\":\"\
                             5C912C4B3BFF2ADB49885DCBDB53D6D3041D0632E498CDFF\
                             2114CD2DCAC936AB0901B47C411E5BB57FE77BEF96044940\
@@ -365,6 +400,11 @@ mod tests {
 
     #[test]
     fn verify_signature() {
+        let subscriber = tracing_subscriber::FmtSubscriber::builder()
+            .with_max_level(tracing::Level::TRACE)
+            .finish();
+        tracing::subscriber::set_global_default(subscriber).unwrap();
+
         let command = Command::Create {
             incoming_port: 4567,
             destination_port: 7654,
@@ -374,12 +414,18 @@ mod tests {
 
         // Create signed message
         let signing_key = SigningKey::random(&mut OsRng);
-        let message = serde_json::to_string(&command).unwrap();
+        let timestamp = time::SystemTime::now()
+            .duration_since(time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let mut message = serde_json::to_string(&command).unwrap();
+        message.push_str(&timestamp.to_string());
         let signature: Signature = signing_key.sign(message.as_bytes());
         let bytes = signature.to_bytes();
         assert_eq!(bytes.len(), 96);
         let proxy_command = ProxyCommand {
             command,
+            timestamp: Some(timestamp),
             signature: Some(signature),
         };
 
