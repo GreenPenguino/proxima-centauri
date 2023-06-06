@@ -3,11 +3,17 @@ use axum::{
     Router,
 };
 use proxima_centauri::{process_command, root, GlobalState};
-use std::{net::SocketAddr, sync::Arc};
+use std::sync::Arc;
 use tracing::Level;
 
 #[tokio::main]
 async fn main() {
+    let addr: std::net::SocketAddr = std::env::args()
+        .nth(1)
+        .unwrap_or_else(|| "127.0.0.1:14000".to_string())
+        .parse()
+        .unwrap();
+
     // initialize tracing
     let subscriber = tracing_subscriber::FmtSubscriber::builder()
         .with_max_level(Level::INFO)
@@ -27,7 +33,6 @@ async fn main() {
         .with_state(shared_state);
 
     // run our app with hyper
-    let addr = SocketAddr::from(([127, 0, 0, 1], 14000));
     tracing::debug!("listening  on {}", addr);
     axum::Server::bind(&addr)
         .serve(app.into_make_service())

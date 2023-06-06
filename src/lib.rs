@@ -100,9 +100,7 @@ impl GlobalState {
         Self {
             proxies: Mutex::new(HashMap::new()),
             ports: RwLock::new(HashSet::new()),
-            verifying_key: verifying_key
-                .map(|key| VerifyingKey::from_str(key.as_ref()).ok())
-                .flatten(),
+            verifying_key: verifying_key.and_then(|key| VerifyingKey::from_str(key.as_ref()).ok()),
         }
     }
 }
